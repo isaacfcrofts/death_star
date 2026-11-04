@@ -1,0 +1,910 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Rebel Tactical Display</title>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+  <style>
+    :root {
+      --white: #ffffff;
+      --cyan-white: #dcf4ff;
+      --dim: #527e96;
+      --border-idle: #2a4c60;
+      --bg: #000000;
+      --cols: 2;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; user-select: none; }
+    body {
+      background-color: var(--bg);
+      color: var(--white);
+      font-family: 'Courier New', Courier, monospace;
+      overflow: hidden;
+      width: 100vw;
+      height: 100vh;
+    }
+
+    /* Top Telemetry Bar */
+    #top-bar {
+      position: fixed;
+      top: 2.2vh;
+      left: 4vw;
+      right: 4vw;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      font-size: 0.75rem;
+      letter-spacing: 2px;
+      color: var(--dim);
+      z-index: 30;
+      opacity: 0;
+      transition: opacity 0.5s ease;
+    }
+    #top-bar.visible { opacity: 1; }
+    .top-btn {
+      background: transparent;
+      border: 1px solid var(--border-idle);
+      color: var(--dim);
+      font-family: inherit;
+      font-size: 0.72rem;
+      letter-spacing: 2px;
+      padding: 5px 10px;
+      cursor: pointer;
+    }
+    .top-btn:hover {
+      border-color: var(--white);
+      color: var(--white);
+    }
+
+    /* Main Layout */
+    #main-ui {
+      position: relative;
+      display: flex;
+      width: 100%;
+      height: 100%;
+      align-items: center;
+      justify-content: flex-end;
+      padding: 5vh 5vw;
+    }
+
+    /* Uncropped Square Hologram Stage:
+       Starts dead-center (left: 50%), then glides to the left side once rotating */
+    #deathstar-stage {
+      position: absolute;
+      left: 50%;
+      top: 50%;
+      width: min(44vw, 76vh);
+      height: min(44vw, 76vh);
+      transform: translate(-50%, -50%);
+      transition: left 1.15s cubic-bezier(0.22, 1, 0.36, 1),
+                  transform 1.15s cubic-bezier(0.22, 1, 0.36, 1);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      pointer-events: none;
+      z-index: 5;
+    }
+    #deathstar-stage.docked-left {
+      left: 4vw;
+      transform: translate(0%, -50%);
+    }
+
+    /* Official Startup/Loop Video Element (Uncropped) */
+    #hologram-video {
+      width: 100%;
+      height: 100%;
+      object-fit: contain;
+      background: #000;
+      display: block;
+      transform: scale(1.3); /* Adjust this number to fine-tune the size */
+    }
+
+    /* Optional 3D Canvas Container (Uncropped) */
+    #threejs-container {
+      width: 100%;
+      height: 100%;
+      display: none;
+    }
+
+    /* Right-Side Menu Container */
+    #menu-container {
+      width: 48%;
+      display: flex;
+      flex-direction: column;
+      opacity: 0;
+      transform: translateY(14px);
+      transition: opacity 0.45s ease, transform 0.45s ease;
+      pointer-events: none;
+      z-index: 10;
+    }
+    #menu-container.visible {
+      opacity: 1;
+      transform: translateY(0);
+      pointer-events: auto;
+    }
+
+    .sub-header {
+      font-size: 0.85rem;
+      letter-spacing: 3px;
+      color: var(--dim);
+      margin-bottom: 6px;
+      text-transform: uppercase;
+    }
+    .main-header {
+      font-size: 2.4rem;
+      font-weight: bold;
+      letter-spacing: 4px;
+      color: var(--cyan-white);
+      border-bottom: 2px solid var(--border-idle);
+      padding-bottom: 12px;
+      margin-bottom: 22px;
+      text-transform: uppercase;
+    }
+
+    /* Button Grid with Staggered Pop-Up */
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(var(--cols), 1fr);
+      gap: 18px;
+    }
+    .target-box {
+      border: 1.5px solid var(--border-idle);
+      padding: 18px 20px 14px 20px;
+      background: rgba(8, 20, 30, 0.28);
+      position: relative;
+      cursor: pointer;
+      opacity: 0;
+      transform: scale(0.94);
+      transition: opacity 0.25s ease, transform 0.25s ease, border-color 0.12s ease, box-shadow 0.12s ease;
+    }
+    .target-box.pop-in {
+      opacity: 1;
+      transform: scale(1);
+    }
+    .target-box::after {
+      content: "";
+      display: block;
+      height: 2px;
+      width: 100%;
+      background: #1c3645;
+      margin-top: 14px;
+    }
+    .target-box.selected {
+      border-color: var(--white);
+      background: rgba(200, 235, 255, 0.12);
+      box-shadow: 0 0 15px rgba(255, 255, 255, 0.35), inset 0 0 8px rgba(255, 255, 255, 0.15);
+    }
+    .target-box.selected::after {
+      background: var(--white);
+      box-shadow: 0 0 8px var(--white);
+    }
+    .target-id {
+      font-size: 0.72rem;
+      color: var(--dim);
+      letter-spacing: 2px;
+      margin-bottom: 6px;
+      text-transform: uppercase;
+    }
+    .target-box.selected .target-id {
+      color: var(--cyan-white);
+    }
+    .target-name {
+      font-size: 1.3rem;
+      font-weight: bold;
+      color: var(--white);
+      letter-spacing: 2px;
+      text-transform: uppercase;
+    }
+
+    /* Official Attack Video Overlay */
+    #attack-overlay {
+      position: fixed;
+      inset: 0;
+      background: #000;
+      display: none;
+      align-items: center;
+      justify-content: center;
+      z-index: 100;
+    }
+    #attack-video {
+      width: 100vw;
+      height: 100vh;
+      object-fit: contain;
+      background: #000;
+    }
+    #explosion-label {
+      position: absolute;
+      border: 3px solid #ffffff;
+      background: #000000;
+      color: #ffffff;
+      padding: 14px 38px;
+      font-size: 2.5rem;
+      font-weight: bold;
+      letter-spacing: 5px;
+      display: none;
+      text-transform: uppercase;
+      box-shadow: 0 0 20px rgba(255, 255, 255, 0.6);
+      z-index: 110;
+    }
+
+    /* On-Screen Customization Modal */
+    #config-modal {
+      position: fixed;
+      inset: 0;
+      background: rgba(0, 4, 8, 0.95);
+      display: none;
+      align-items: center;
+      justify-content: center;
+      z-index: 200;
+      padding: 4vh 6vw;
+    }
+    .modal-box {
+      border: 2px solid var(--white);
+      background: #050c12;
+      width: 100%;
+      max-width: 960px;
+      max-height: 90vh;
+      padding: 24px 28px;
+      display: flex;
+      flex-direction: column;
+      gap: 14px;
+      overflow-y: auto;
+    }
+    .modal-title {
+      font-size: 1.3rem;
+      color: var(--white);
+      letter-spacing: 3px;
+      border-bottom: 1px solid var(--dim);
+      padding-bottom: 10px;
+      display: flex;
+      justify-content: space-between;
+    }
+    .config-row {
+      display: grid;
+      grid-template-columns: 120px 1fr 1.3fr 150px 42px;
+      gap: 10px;
+      align-items: center;
+    }
+    .config-input, .config-select {
+      background: #0a1824;
+      border: 1px solid var(--dim);
+      color: var(--white);
+      font-family: inherit;
+      padding: 8px 10px;
+      font-size: 0.88rem;
+    }
+    .btn {
+      background: #102536;
+      border: 1px solid var(--white);
+      color: var(--white);
+      font-family: inherit;
+      padding: 8px 14px;
+      cursor: pointer;
+      letter-spacing: 1px;
+      text-transform: uppercase;
+    }
+    .btn:hover { background: #1d425e; }
+    .btn-danger { border-color: #ff6b6b; color: #ff9e9e; }
+    .modal-actions {
+      display: flex;
+      justify-content: space-between;
+      margin-top: 8px;
+      padding-top: 12px;
+      border-top: 1px solid var(--dim);
+    }
+  </style>
+</head>
+<body>
+
+  <div id="top-bar">
+    <div style="display:flex; gap:10px;">
+      <button class="top-btn" onclick="playStartupIntro()">[ REPLAY INTRO (KEY: R) ]</button>
+    </div>
+    <button class="top-btn" onclick="openConfigModal()">[ CONFIGURE MENU (KEY: C) ]</button>
+  </div>
+
+  <div id="main-ui">
+    <!-- Left-Side Death Star Stage (Official Video by default, or Rebuilt 3D Model) -->
+    <div id="deathstar-stage">
+      <video id="hologram-video" src="attack.mp4" muted playsinline preload="auto"></video>
+      <div id="threejs-container"></div>
+    </div>
+
+    <!-- Right-Side Target Grid -->
+    <div id="menu-container">
+      <div class="sub-header" id="ui-subheader">REBEL TACTICAL DISPLAY</div>
+      <div class="main-header" id="ui-mainheader">SELECT ATTACK TARGET</div>
+      <div class="grid" id="target-grid"></div>
+    </div>
+  </div>
+
+  <!-- Official Video Attack Sequence Overlay -->
+  <div id="attack-overlay">
+    <video id="attack-video" src="attack.mp4" preload="auto" playsinline></video>
+    <div id="explosion-label">DISNEY+</div>
+  </div>
+
+  <!-- On-Screen Customization Modal -->
+  <div id="config-modal">
+    <div class="modal-box">
+      <div class="modal-title">
+        <span>TACTICAL MENU & HOLOGRAM CONFIGURATION</span>
+        <span style="font-size:0.8rem; color:var(--dim);">AUTO-SAVES TO STORAGE</span>
+      </div>
+      <div style="display:grid; grid-template-columns: 1fr 1fr 1.1fr 1fr 75px; gap:10px;">
+        <div>
+          <label style="font-size:0.72rem; color:var(--dim);">SUB-HEADER</label>
+          <input id="cfg-sub" class="config-input" style="width:100%">
+        </div>
+        <div>
+          <label style="font-size:0.72rem; color:var(--dim);">MAIN HEADER</label>
+          <input id="cfg-main" class="config-input" style="width:100%">
+        </div>
+        <div>
+          <label style="font-size:0.72rem; color:var(--dim);">HOLOGRAM MODE</label>
+          <select id="cfg-mode" class="config-select" style="width:100%">
+            <option value="official_video">Official 1977 Video (attack.mp4)</option>
+            <option value="threejs_model">3D Point-Cloud Model (Uncropped)</option>
+          </select>
+        </div>
+        <div>
+          <label style="font-size:0.72rem; color:var(--dim);">VIDEO FILE</label>
+          <input id="cfg-video" class="config-input" style="width:100%" placeholder="attack.mp4">
+        </div>
+        <div>
+          <label style="font-size:0.72rem; color:var(--dim);">COLS</label>
+          <input id="cfg-cols" type="number" min="1" max="4" class="config-input" style="width:100%">
+        </div>
+      </div>
+      <div style="font-size:0.72rem; color:var(--dim); margin-top:4px;">
+        BUTTON TARGETS (Sub-label | Display Name | Google TV Package ID | Preset)
+      </div>
+      <div id="cfg-targets-list" style="display:flex; flex-direction:column; gap:8px;"></div>
+      <div class="modal-actions">
+        <div style="display:flex; gap:10px;">
+          <button class="btn" onclick="addTargetRow()">+ ADD TARGET</button>
+          <button class="btn btn-danger" onclick="resetToDefaults()">RESET DEFAULTS</button>
+        </div>
+        <div style="display:flex; gap:10px;">
+          <button class="btn" onclick="closeConfigModal()">CANCEL</button>
+          <button class="btn" style="background:#1c5d85;" onclick="saveConfigModal()">SAVE & APPLY</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    /******************************************************************
+     * 1. MENU & HOLOGRAM CONFIGURATION
+     ******************************************************************/
+    const DEFAULT_CONFIG = {
+      subHeader: "REBEL TACTICAL DISPLAY",
+      mainHeader: "SELECT ATTACK TARGET",
+      hologramMode: "official_video", // "official_video" or "threejs_model"
+      videoSrc: "attack.mp4",
+      columns: 2,
+      targets: [
+        { id: "TARGET 01", name: "NETFLIX",     pkg: "com.netflix.ninja" },
+        { id: "TARGET 02", name: "PRIME VIDEO", pkg: "com.amazon.amazonvideo.livingroom" },
+        { id: "TARGET 03", name: "DISNEY+",     pkg: "com.disney.disneyplus" },
+        { id: "TARGET 04", name: "HULU",        pkg: "com.hulu.livingroomplus" },
+        { id: "TARGET 05", name: "MAX",         pkg: "com.wbd.stream" },
+        { id: "TARGET 06", name: "YOUTUBE",     pkg: "com.google.android.youtube.tv" }
+      ]
+    };
+
+    const APP_PRESETS = {
+      "Select Preset...": "",
+      "Netflix": "com.netflix.ninja",
+      "Disney+": "com.disney.disneyplus",
+      "Prime Video": "com.amazon.amazonvideo.livingroom",
+      "YouTube": "com.google.android.youtube.tv",
+      "SmartTube": "com.liskovsoft.smarttubetv.beta",
+      "Hulu": "com.hulu.livingroomplus",
+      "Max": "com.wbd.stream",
+      "Apple TV+": "com.apple.atve.androidtv.appletv",
+      "Plex": "com.plexapp.android",
+      "Jellyfin": "org.jellyfin.androidtv",
+      "Peacock": "com.peacocktv.peacockandroid",
+      "Paramount+": "com.cbs.ott",
+      "Spotify": "com.spotify.tv.android",
+      "Twitch": "tv.twitch.android.app",
+      "ESPN": "com.espn.score_center",
+      "Kodi": "org.xbmc.kodi"
+    };
+
+    let appConfig = JSON.parse(localStorage.getItem('rebel_tv_config_v3')) || DEFAULT_CONFIG;
+    let currentIndex = 0;
+    let isLaunching = false;
+    let modalOpen = false;
+    let introDone = false;
+
+    const stageEl = document.getElementById('deathstar-stage');
+    const holoVideo = document.getElementById('hologram-video');
+    const threeContainer = document.getElementById('threejs-container');
+    const attackVideo = document.getElementById('attack-video');
+
+    function renderMenu() {
+      document.getElementById('ui-subheader').innerText = appConfig.subHeader;
+      document.getElementById('ui-mainheader').innerText = appConfig.mainHeader;
+      const vSrc = appConfig.videoSrc || 'attack.mp4';
+      if (holoVideo.getAttribute('src') !== vSrc) holoVideo.src = vSrc;
+      if (attackVideo.getAttribute('src') !== vSrc) attackVideo.src = vSrc;
+      document.documentElement.style.setProperty('--cols', appConfig.columns || 2);
+
+      const useVideo = (appConfig.hologramMode || 'official_video') === 'official_video';
+      holoVideo.style.display = useVideo ? 'block' : 'none';
+      threeContainer.style.display = useVideo ? 'none' : 'block';
+
+      const grid = document.getElementById('target-grid');
+      grid.innerHTML = '';
+      appConfig.targets.forEach((t, idx) => {
+        const card = document.createElement('div');
+        card.className = 'target-box' + (idx === currentIndex ? ' selected' : '') + (introDone ? ' pop-in' : '');
+        card.innerHTML = `
+          <div class="target-id">${t.id}</div>
+          <div class="target-name">${t.name}</div>
+        `;
+        card.onclick = () => {
+          if (!introDone || isLaunching) return;
+          currentIndex = idx;
+          updateSelection();
+          triggerOfficialAttackVideo(t.name, t.pkg);
+        };
+        grid.appendChild(card);
+      });
+    }
+
+    function updateSelection() {
+      const boxes = document.querySelectorAll('.target-box');
+      boxes.forEach((b, i) => b.classList.toggle('selected', i === currentIndex));
+    }
+
+    /******************************************************************
+     * 2. ACCURATE 3D DEATH STAR MODEL (MATCHED TO REFERENCE PHOTO)
+     *    - Circular glowing white points (not line segments)
+     *    - Flat equatorial line that stops outside the superlaser dish rim
+     *    - 16-spoke paired superlaser dish on the equator
+     *    - Dotted North Pole ring & solid South Pole ring with center dot
+     *    - Framed at camera.z = 16.5 so all 4 edges have full margin
+     ******************************************************************/
+    const scene = new THREE.Scene();
+    const camera = new THREE.PerspectiveCamera(34, 1, 0.1, 1000);
+    const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+    renderer.setSize(stageEl.clientWidth, stageEl.clientHeight);
+    renderer.setPixelRatio(window.devicePixelRatio);
+    threeContainer.appendChild(renderer.domElement);
+
+    // Create crisp circular white dot texture for THREE.Points
+    function createCircleDotTexture() {
+      const c = document.createElement('canvas');
+      c.width = 64; c.height = 64;
+      const ctx = c.getContext('2d');
+      const grad = ctx.createRadialGradient(32, 32, 4, 32, 32, 28);
+      grad.addColorStop(0, 'rgba(255, 255, 255, 1)');
+      grad.addColorStop(0.55, 'rgba(240, 248, 255, 0.95)');
+      grad.addColorStop(1, 'rgba(255, 255, 255, 0)');
+      ctx.fillStyle = grad;
+      ctx.beginPath();
+      ctx.arc(32, 32, 28, 0, Math.PI * 2);
+      ctx.fill();
+      return new THREE.CanvasTexture(c);
+    }
+
+    const dsGroup = new THREE.Group();
+    const R = 4.2; // Smaller radius + camera.z = 16.5 guarantees zero edge clipping
+    const dishAngularRadius = 0.37; // Superlaser dish cutout angle on equator
+    const dishNormal = new THREE.Vector3(0, 0, 1); // Dish centered at front (z = +R, y = 0)
+
+    const lineMat = new THREE.LineBasicMaterial({ color: 0xd8e8f0, linewidth: 2 });
+    const dotMat = new THREE.PointsMaterial({
+      color: 0xffffff,
+      size: 0.21,
+      map: createCircleDotTexture(),
+      transparent: true,
+      alphaTest: 0.05,
+      depthWrite: false
+    });
+
+    // A. Surface Point Cloud + Dotted North Pole Ring (as shown in reference image)
+    const dotCoords = [];
+
+    // Dotted North Pole ring (14 dots around the top pole)
+    const northR = R * 0.19;
+    const northY = Math.sqrt(R * R - northR * northR);
+    for (let i = 0; i < 14; i++) {
+      const a = (i / 14) * Math.PI * 2;
+      dotCoords.push(Math.cos(a) * northR, northY, Math.sin(a) * northR);
+    }
+
+    // Scattered latitude point cloud with clear gap along the equatorial trench
+    const latBands = 22;
+    for (let i = 2; i < latBands - 1; i++) {
+      const phi = (i / latBands) * Math.PI;
+      const y = R * Math.cos(phi);
+      const ringR = R * Math.sin(phi);
+
+      // Leave a clean dark band above and below the equator line just like the photo
+      if (Math.abs(y) < R * 0.11) continue;
+
+      const count = Math.max(8, Math.floor(34 * Math.sin(phi)));
+      for (let j = 0; j < count; j++) {
+        const seed = Math.sin(i * 37.17 + j * 91.53) * 43758.5453;
+        const rand = seed - Math.floor(seed);
+        if (rand < 0.36) continue;
+
+        const jitter = ((Math.sin(i * 19.3 + j * 47.7) * 43758.5) % 1) * 0.16;
+        const theta = (j / count) * Math.PI * 2 + jitter;
+        const x = ringR * Math.cos(theta);
+        const z = ringR * Math.sin(theta);
+
+        const ptNorm = new THREE.Vector3(x, y, z).normalize();
+        // Exclude points inside the superlaser dish
+        if (ptNorm.angleTo(dishNormal) > dishAngularRadius * 1.06) {
+          dotCoords.push(x, y, z);
+        }
+      }
+    }
+
+    // Single dot inside the South Pole ring (visible in reference photo)
+    dotCoords.push(R * 0.04, -R * 0.992, R * 0.04);
+
+    const dotGeo = new THREE.BufferGeometry();
+    dotGeo.setAttribute('position', new THREE.Float32BufferAttribute(dotCoords, 3));
+    dsGroup.add(new THREE.Points(dotGeo, dotMat));
+
+    // B. Solid South Pole Ring (reference photo shows solid small ellipse at bottom pole)
+    const southPts = [];
+    const southR = R * 0.14;
+    const southY = -Math.sqrt(R * R - southR * southR);
+    for (let i = 0; i <= 48; i++) {
+      const a = (i / 48) * Math.PI * 2;
+      southPts.push(new THREE.Vector3(Math.cos(a) * southR, southY, Math.sin(a) * southR));
+    }
+    dsGroup.add(new THREE.Line(new THREE.BufferGeometry().setFromPoints(southPts), lineMat));
+
+    // C. Equatorial Trench Line (stops at the outer rim of the superlaser dish, never crossing inside it)
+    const eqPts = [];
+    const eqSegs = 96;
+    for (let i = 0; i <= eqSegs; i++) {
+      // Angle around Y axis starting from right rim of dish around the back to the left rim
+      const a = dishAngularRadius + (i / eqSegs) * (Math.PI * 2 - dishAngularRadius * 2);
+      eqPts.push(new THREE.Vector3(Math.sin(a) * R, 0, Math.cos(a) * R));
+    }
+    dsGroup.add(new THREE.Line(new THREE.BufferGeometry().setFromPoints(eqPts), lineMat));
+
+    // D. Equatorial Superlaser Dish (Outer Ring + Inner Ring + 8 Paired / 16 Radial Spokes)
+    const dishGroup = new THREE.Group();
+    const outerR = R * Math.sin(dishAngularRadius);
+    const innerR = outerR * 0.44;
+    const rimZ = R * Math.cos(dishAngularRadius);
+    const innerZ = rimZ - 0.22;
+
+    function makeDishCircle(radius, zPos, segs = 64) {
+      const pts = [];
+      for (let i = 0; i <= segs; i++) {
+        const a = (i / segs) * Math.PI * 2;
+        pts.push(new THREE.Vector3(Math.cos(a) * radius, Math.sin(a) * radius, zPos));
+      }
+      return new THREE.Line(new THREE.BufferGeometry().setFromPoints(pts), lineMat);
+    }
+    dishGroup.add(makeDishCircle(outerR, rimZ));
+    dishGroup.add(makeDishCircle(innerR, innerZ));
+
+    // 8 pairs of radial spokes (16 total) matching the grouped spoke pattern in the photo
+    const spokePts = [];
+    for (let p = 0; p < 8; p++) {
+      const baseAngle = (p / 8) * Math.PI * 2;
+      [-0.085, 0.085].forEach(offset => {
+        const a = baseAngle + offset;
+        spokePts.push(new THREE.Vector3(Math.cos(a) * innerR, Math.sin(a) * innerR, innerZ));
+        spokePts.push(new THREE.Vector3(Math.cos(a) * outerR, Math.sin(a) * outerR, rimZ));
+      });
+    }
+    dishGroup.add(new THREE.LineSegments(new THREE.BufferGeometry().setFromPoints(spokePts), lineMat));
+    dsGroup.add(dishGroup);
+
+    scene.add(dsGroup);
+    camera.position.z = 16.5;
+
+    /******************************************************************
+     * 3. STARTUP CHOREOGRAPHY & SEAMLESS OFFICIAL VIDEO LOOP
+     *    - Official Video Mode:
+     *        0.00s -> 5.85s: Stationary zoom-in dead center
+     *        5.85s -> 7.00s: Begins rotating in center
+     *        7.00s: Slides smoothly to the left while menu buttons pop up
+     *        5.85s <-> 18.05s: Seamless rotation loop while on menu
+     ******************************************************************/
+    let introTimers = [];
+    let introStartMs = 0;
+    let threeRotating = false;
+
+    function clearIntroTimers() {
+      introTimers.forEach(id => clearTimeout(id));
+      introTimers = [];
+    }
+
+    function revealMenuAndDockLeft() {
+      stageEl.classList.add('docked-left');
+      introTimers.push(setTimeout(() => {
+        document.getElementById('menu-container').classList.add('visible');
+        document.getElementById('top-bar').classList.add('visible');
+        const boxes = document.querySelectorAll('.target-box');
+        boxes.forEach((box, idx) => {
+          introTimers.push(setTimeout(() => {
+            box.classList.add('pop-in');
+          }, idx * 85));
+        });
+        introDone = true;
+      }, 650));
+    }
+
+    function playStartupIntro() {
+      clearIntroTimers();
+      introDone = false;
+      threeRotating = false;
+
+      // Reset stage to center and hide menu
+      stageEl.classList.remove('docked-left');
+      document.getElementById('menu-container').classList.remove('visible');
+      document.getElementById('top-bar').classList.remove('visible');
+      document.querySelectorAll('.target-box').forEach(b => b.classList.remove('pop-in'));
+
+      const useVideo = (appConfig.hologramMode || 'official_video') === 'official_video';
+      holoVideo.style.display = useVideo ? 'block' : 'none';
+      threeContainer.style.display = useVideo ? 'none' : 'block';
+
+      if (useVideo) {
+        holoVideo.pause();
+        holoVideo.currentTime = 0;
+        holoVideo.play().catch(() => {});
+
+        // At 7.0s in attack.mp4 (after stationary zoom completes at 5.85s and rotation starts),
+        // glide the video to the left and pop in the menu buttons
+        introTimers.push(setTimeout(() => {
+          revealMenuAndDockLeft();
+        }, 7000));
+      } else {
+        // 3D Model Choreography: Stationary zoom (0 -> 2.8s), rotate (2.8s), dock left (4.0s)
+        dsGroup.rotation.set(0, 0, 0);
+        dsGroup.scale.set(0.04, 0.04, 0.04);
+        introStartMs = performance.now();
+
+        introTimers.push(setTimeout(() => {
+          threeRotating = true;
+        }, 2800));
+
+        introTimers.push(setTimeout(() => {
+          revealMenuAndDockLeft();
+        }, 4000));
+      }
+    }
+
+    // Master Loop: Keeps official video seamlessly looping between 5.85s and 18.05s
+    // (where the Death Star rotates horizontally without tilting into the 0:19 trench zoom)
+    function masterTick(now) {
+      requestAnimationFrame(masterTick);
+
+      const useVideo = (appConfig.hologramMode || 'official_video') === 'official_video';
+      if (useVideo) {
+        if (!isLaunching && !holoVideo.paused) {
+          if (holoVideo.currentTime >= 18.70) {
+            holoVideo.currentTime = 6.37;
+          }
+        }
+      } else {
+        const elapsed = (now - introStartMs) / 1000;
+        if (elapsed < 2.8) {
+          const p = Math.min(1, elapsed / 2.6);
+          const eased = 1 - Math.pow(1 - p, 3);
+          const s = 0.04 + eased * 0.96;
+          dsGroup.scale.set(s, s, s);
+        } else {
+          dsGroup.scale.set(1, 1, 1);
+        }
+        if (threeRotating) {
+          dsGroup.rotation.y += 0.0055;
+        }
+        renderer.render(scene, camera);
+      }
+    }
+
+    renderMenu();
+    playStartupIntro();
+    requestAnimationFrame(masterTick);
+
+    // Replay startup intro whenever waking the TV or pressing Home to return
+    document.addEventListener('visibilitychange', () => {
+      if (document.visibilityState === 'visible' && !isLaunching) {
+        playStartupIntro();
+      }
+    });
+
+    window.addEventListener('resize', () => {
+      renderer.setSize(stageEl.clientWidth, stageEl.clientHeight);
+    });
+
+    /******************************************************************
+     * 4. OFFICIAL ATTACK VIDEO SEQUENCE (02:51.8 -> 03:04.75)
+     *    Plays the exact trench-run, torpedo drop, shaft descent, and
+     *    8-ray reactor detonation from attack.mp4, freezes on the explosion
+     *    with the [APP NAME] box, and launches the app.
+     ******************************************************************/
+    function triggerOfficialAttackVideo(appName, pkgName) {
+      isLaunching = true;
+      holoVideo.pause();
+
+      const overlay = document.getElementById('attack-overlay');
+      const label = document.getElementById('explosion-label');
+
+      overlay.style.display = 'flex';
+      label.innerText = appName;
+      label.style.display = 'none';
+
+      let holdTriggered = false;
+
+      const finishAndLaunch = () => {
+        attackVideo.pause();
+        attackVideo.ontimeupdate = null;
+        attackVideo.onended = null;
+        overlay.style.display = 'none';
+        label.style.display = 'none';
+        isLaunching = false;
+        if ((appConfig.hologramMode || 'official_video') === 'official_video') {
+          holoVideo.play().catch(() => {});
+        }
+        window.location.href = `intent://#Intent;package=${pkgName};end`;
+      };
+
+      const startAttackClip = () => {
+        // Check if attack.mp4 is the full 3:10 video (>60s) or a pre-trimmed clip
+        const isFullVideo = attackVideo.duration && attackVideo.duration > 60;
+        const startSec  = isFullVideo ? 171.80 : 0;      // 02:51.80: Trench targeting display
+        const labelSec  = isFullVideo ? 183.65 : Math.max(0, (attackVideo.duration || 13) - 1.2); // 03:03.65: Reactor explosion starburst
+        const freezeSec = isFullVideo ? 184.75 : Math.max(0, (attackVideo.duration || 13) - 0.15); // 03:04.75: Hold before 03:05 cut
+
+        attackVideo.currentTime = startSec;
+
+        attackVideo.ontimeupdate = () => {
+          if (attackVideo.currentTime >= labelSec) {
+            label.style.display = 'block';
+          }
+          if (!holdTriggered && attackVideo.currentTime >= freezeSec) {
+            holdTriggered = true;
+            attackVideo.pause();
+            label.style.display = 'block';
+            setTimeout(finishAndLaunch, 850);
+          }
+        };
+
+        attackVideo.onended = () => {
+          if (!holdTriggered) finishAndLaunch();
+        };
+
+        attackVideo.play().catch(() => {
+          label.style.display = 'block';
+          setTimeout(finishAndLaunch, 1200);
+        });
+      };
+
+      if (attackVideo.readyState >= 1) {
+        startAttackClip();
+      } else {
+        attackVideo.onloadedmetadata = startAttackClip;
+        attackVideo.onerror = () => {
+          label.style.display = 'block';
+          setTimeout(finishAndLaunch, 1200);
+        };
+      }
+    }
+
+    /******************************************************************
+     * 5. TCL REMOTE D-PAD NAVIGATION & SHORTCUT KEYS
+     ******************************************************************/
+    window.addEventListener('keydown', (e) => {
+      if (e.key === 'c' || e.key === 'C' || e.keyCode === 82) {
+        modalOpen ? closeConfigModal() : openConfigModal();
+        return;
+      }
+      if ((e.key === 'r' || e.key === 'R') && !modalOpen && !isLaunching) {
+        playStartupIntro();
+        return;
+      }
+      if (modalOpen || isLaunching || !introDone) return;
+
+      const cols = parseInt(appConfig.columns) || 2;
+      const total = appConfig.targets.length;
+
+      if (e.key === 'ArrowRight' && currentIndex + 1 < total) currentIndex++;
+      else if (e.key === 'ArrowLeft' && currentIndex - 1 >= 0) currentIndex--;
+      else if (e.key === 'ArrowDown' && currentIndex + cols < total) currentIndex += cols;
+      else if (e.key === 'ArrowUp' && currentIndex - cols >= 0) currentIndex -= cols;
+      else if (e.key === 'Enter' || e.keyCode === 13 || e.keyCode === 23) {
+        const target = appConfig.targets[currentIndex];
+        if (target) triggerOfficialAttackVideo(target.name, target.pkg);
+      }
+      updateSelection();
+    });
+
+    /******************************************************************
+     * 6. ON-SCREEN CONFIGURATION MODAL
+     ******************************************************************/
+    function openConfigModal() {
+      modalOpen = true;
+      document.getElementById('cfg-sub').value = appConfig.subHeader;
+      document.getElementById('cfg-main').value = appConfig.mainHeader;
+      document.getElementById('cfg-mode').value = appConfig.hologramMode || 'official_video';
+      document.getElementById('cfg-video').value = appConfig.videoSrc || 'attack.mp4';
+      document.getElementById('cfg-cols').value = appConfig.columns || 2;
+
+      const list = document.getElementById('cfg-targets-list');
+      list.innerHTML = '';
+      appConfig.targets.forEach((t) => addTargetRow(t.id, t.name, t.pkg));
+      document.getElementById('config-modal').style.display = 'flex';
+    }
+
+    function addTargetRow(id = '', name = '', pkg = '') {
+      const list = document.getElementById('cfg-targets-list');
+      const idx = list.children.length + 1;
+      const row = document.createElement('div');
+      row.className = 'config-row';
+
+      const presetOptions = Object.entries(APP_PRESETS)
+        .map(([label, val]) => `<option value="${val}">${label}</option>`)
+        .join('');
+
+      row.innerHTML = `
+        <input class="config-input row-id" value="${id || 'TARGET 0' + idx}">
+        <input class="config-input row-name" value="${name || 'NEW APP'}">
+        <input class="config-input row-pkg" value="${pkg || ''}" placeholder="com.example.app">
+        <select class="config-select" onchange="if(this.value){ this.previousElementSibling.value=this.value; this.parentElement.querySelector('.row-name').value=this.options[this.selectedIndex].text.toUpperCase(); }">
+          ${presetOptions}
+        </select>
+        <button class="btn btn-danger" onclick="this.parentElement.remove()">X</button>
+      `;
+      list.appendChild(row);
+    }
+
+    function saveConfigModal() {
+      const rows = document.querySelectorAll('#cfg-targets-list .config-row');
+      const newTargets = [];
+      rows.forEach((r) => {
+        newTargets.push({
+          id: r.querySelector('.row-id').value.trim(),
+          name: r.querySelector('.row-name').value.trim(),
+          pkg: r.querySelector('.row-pkg').value.trim()
+        });
+      });
+
+      appConfig = {
+        subHeader: document.getElementById('cfg-sub').value.trim(),
+        mainHeader: document.getElementById('cfg-main').value.trim(),
+        hologramMode: document.getElementById('cfg-mode').value,
+        videoSrc: document.getElementById('cfg-video').value.trim() || 'attack.mp4',
+        columns: parseInt(document.getElementById('cfg-cols').value) || 2,
+        targets: newTargets
+      };
+
+      localStorage.setItem('rebel_tv_config_v3', JSON.stringify(appConfig));
+      currentIndex = 0;
+      renderMenu();
+      closeConfigModal();
+      playStartupIntro();
+    }
+
+    function resetToDefaults() {
+      localStorage.removeItem('rebel_tv_config_v3');
+      appConfig = JSON.parse(JSON.stringify(DEFAULT_CONFIG));
+      currentIndex = 0;
+      renderMenu();
+      closeConfigModal();
+      playStartupIntro();
+    }
+
+    function closeConfigModal() {
+      modalOpen = false;
+      document.getElementById('config-modal').style.display = 'none';
+    }
+  </script>
+</body>
+</html>

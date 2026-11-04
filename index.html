@@ -753,7 +753,11 @@
         if ((appConfig.hologramMode || 'official_video') === 'official_video') {
           holoVideo.play().catch(() => {});
         }
-        window.location.href = `intent://#Intent;package=${pkgName};end`;
+        if (typeof fully !== 'undefined') {
+          fully.startApplication(pkgName);
+        } else {
+          window.location.href = `intent:#Intent;action=android.intent.action.MAIN;category=android.intent.category.LEANBACK_LAUNCHER;package=${pkgName};end`;
+        }
       };
 
       const startAttackClip = () => {

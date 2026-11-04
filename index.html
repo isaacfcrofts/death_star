@@ -71,13 +71,13 @@
        Starts dead-center (left: 50%), then glides to the left side once rotating */
     #deathstar-stage {
       position: absolute;
-      left: 50%;
+      left: 0;
       top: 50%;
       width: min(44vw, 76vh);
       height: min(44vw, 76vh);
-      transform: translate(-50%, -50%);
-      transition: left 1.15s cubic-bezier(0.22, 1, 0.36, 1),
-                  transform 1.15s cubic-bezier(0.22, 1, 0.36, 1);
+      /* Use calc() to center it initially using only transform */
+      transform: translate(calc(50vw - 50%), -50%); 
+      transition: transform 1.15s cubic-bezier(0.22, 1, 0.36, 1);
       display: flex;
       align-items: center;
       justify-content: center;
@@ -85,8 +85,8 @@
       z-index: 5;
     }
     #deathstar-stage.docked-left {
-      left: 4vw;
-      transform: translate(0%, -50%);
+      /* Move to the left edge using only transform */
+      transform: translate(4vw, -50%);
     }
 
     /* Official Startup/Loop Video Element (Uncropped) */
@@ -155,7 +155,7 @@
       cursor: pointer;
       opacity: 0;
       transform: scale(0.94);
-      transition: opacity 0.25s ease, transform 0.25s ease, border-color 0.12s ease, box-shadow 0.12s ease;
+      transition: opacity 0.25s ease, transform 0.25s ease;
     }
     .target-box.pop-in {
       opacity: 1;
@@ -472,7 +472,7 @@
     const camera = new THREE.PerspectiveCamera(34, 1, 0.1, 1000);
     const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
     renderer.setSize(stageEl.clientWidth, stageEl.clientHeight);
-    renderer.setPixelRatio(window.devicePixelRatio);
+    renderer.setPixelRatio(1);
     threeContainer.appendChild(renderer.domElement);
 
     // Create crisp circular white dot texture for THREE.Points

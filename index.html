@@ -52,9 +52,10 @@
       padding: 5px 10px;
       cursor: pointer;
     }
-    .top-btn:hover {
+    .top-btn:hover, .top-btn.selected {
       border-color: var(--white);
       color: var(--white);
+      background: rgba(200, 235, 255, 0.12);
     }
 
     /* Main Layout */
@@ -299,9 +300,9 @@
 
   <div id="top-bar">
     <div style="display:flex; gap:10px;">
-      <button class="top-btn" tabindex="-1" onclick="playStartupIntro()">[ REPLAY INTRO ]</button>
+      <button id="btn-replay" class="top-btn" tabindex="-1" onclick="playStartupIntro()">[ REPLAY INTRO ]</button>
     </div>
-    <button class="top-btn" tabindex="-1" onclick="openConfigModal()">[ CONFIGURE MENU ]</button>
+    <button id="btn-config" class="top-btn" tabindex="-1" onclick="openConfigModal()">[ CONFIGURE MENU ]</button>
   </div>
 
   <div id="main-ui">
@@ -461,8 +462,15 @@
     }
 
     function updateSelection() {
+      // Highlight main grid boxes
       const boxes = document.querySelectorAll('.target-box');
       boxes.forEach((b, i) => b.classList.toggle('selected', i === currentIndex));
+      
+      // Highlight top menu buttons based on negative indices
+      const btnReplay = document.getElementById('btn-replay');
+      const btnConfig = document.getElementById('btn-config');
+      if (btnReplay) btnReplay.classList.toggle('selected', currentIndex === -2);
+      if (btnConfig) btnConfig.classList.toggle('selected', currentIndex === -1);
     }
 
     /******************************************************************
@@ -808,10 +816,11 @@
     }
 
     /******************************************************************
-     * 5. TCL REMOTE D-PAD NAVIGATION & SHORTCUT KEYS
+     * 5. TCL REMOTE D-PAD NAVIGATION
      ******************************************************************/
-   window.addEventListener('keydown', (e) => {
-      if (e.key === 'c' || e.key === 'C' || e.keyCode === 82) {
+    window.addEventListener('keydown', (e) => {
+      // Keep physical keyboard shortcuts active for PC testing
+      if (e.key === 'c' || e.key === 'C') {
         modalOpen ? closeConfigModal() : openConfigModal();
         return;
       }
@@ -819,24 +828,44 @@
         playStartupIntro();
         return;
       }
+    
       if (modalOpen || isLaunching || !introDone) return;
-
+    
       const cols = parseInt(appConfig.columns) || 2;
       const total = appConfig.targets.length;
-
-      // Intercept navigation keys to stop the TV's native double-highlighting
+    
+      // Intercept navigation keys
       const navKeys = ['ArrowRight', 'ArrowLeft', 'ArrowDown', 'ArrowUp', 'Enter'];
       if (navKeys.includes(e.key) || e.keyCode === 13 || e.keyCode === 23) {
         e.preventDefault(); 
       }
-
-      if (e.key === 'ArrowRight' && currentIndex + 1 < total) currentIndex++;
-      else if (e.key === 'ArrowLeft' && currentIndex - 1 >= 0) currentIndex--;
-      else if (e.key === 'ArrowDown' && currentIndex + cols < total) currentIndex += cols;
-      else if (e.key === 'ArrowUp' && currentIndex - cols >= 0) currentIndex -= cols;
+    
+      if (e.key === 'ArrowRight') {
+        if (currentIndex === -2) currentIndex = -1; // Replay -> Config
+        else if (currentIndex >= 0 && currentIndex + 1 < total) currentIndex++;
+      } 
+      else if (e.key === 'ArrowLeft') {
+        if (currentIndex === -1) currentIndex = -2; // Config -> Replay
+        else if (currentIndex > 0) currentIndex--;
+      } 
+      else if (e.key === 'ArrowDown') {
+        if (currentIndex < 0) currentIndex = 0; // Drop from top menu down to grid
+        else if (currentIndex + cols < total) currentIndex += cols;
+      } 
+      else if (e.key === 'ArrowUp') {
+        if (currentIndex >= 0 && currentIndex - cols >= 0) {
+          currentIndex -= cols;
+        } else if (currentIndex >= 0) {
+          currentIndex = -1; // Jump from top grid row to the Configure Menu button
+        }
+      } 
       else if (e.key === 'Enter' || e.keyCode === 13 || e.keyCode === 23) {
-        const target = appConfig.targets[currentIndex];
-        if (target) triggerOfficialAttackVideo(target.name, target.pkg);
+        if (currentIndex === -2) playStartupIntro();
+        else if (currentIndex === -1) openConfigModal();
+        else {
+          const target = appConfig.targets[currentIndex];
+          if (target) triggerOfficialAttackVideo(target.name, target.pkg);
+        }
       }
       updateSelection();
     });

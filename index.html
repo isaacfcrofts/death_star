@@ -299,9 +299,9 @@
 
   <div id="top-bar">
     <div style="display:flex; gap:10px;">
-      <button class="top-btn" onclick="playStartupIntro()">[ REPLAY INTRO (KEY: R) ]</button>
+      <button class="top-btn" tabindex="-1" onclick="playStartupIntro()">[ REPLAY INTRO ]</button>
     </div>
-    <button class="top-btn" onclick="openConfigModal()">[ CONFIGURE MENU (KEY: C) ]</button>
+    <button class="top-btn" tabindex="-1" onclick="openConfigModal()">[ CONFIGURE MENU ]</button>
   </div>
 
   <div id="main-ui">
@@ -442,6 +442,10 @@
       appConfig.targets.forEach((t, idx) => {
         const card = document.createElement('div');
         card.className = 'target-box' + (idx === currentIndex ? ' selected' : '') + (introDone ? ' pop-in' : '');
+        
+        // Add this line to hide the div from the TV's native scanner
+        card.tabIndex = -1; 
+        
         card.innerHTML = `
           <div class="target-id">${t.id}</div>
           <div class="target-name">${t.name}</div>

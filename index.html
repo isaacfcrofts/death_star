@@ -831,35 +831,49 @@
     
       if (modalOpen || isLaunching || !introDone) return;
     
+      // Robust key mapping to catch both standard browsers and Android TV hardware D-pads
+      const key = e.key;
+      const code = e.keyCode;
+      
+      const isUp = key === 'ArrowUp' || key === 'Up' || code === 38 || code === 19;
+      const isDown = key === 'ArrowDown' || key === 'Down' || code === 40 || code === 20;
+      const isLeft = key === 'ArrowLeft' || key === 'Left' || code === 37 || code === 21;
+      const isRight = key === 'ArrowRight' || key === 'Right' || code === 39 || code === 22;
+      const isEnter = key === 'Enter' || code === 13 || code === 23 || code === 66;
+    
+      // Intercept navigation keys to prevent the native TV highlight from fighting the script
+      if (isUp || isDown || isLeft || isRight || isEnter) {
+        e.preventDefault();
+        // Kill the native TV focus ring if the OS attempts to apply it
+        if (document.activeElement) document.activeElement.blur(); 
+      } else {
+        return; // Ignore non-navigation keys
+      }
+    
       const cols = parseInt(appConfig.columns) || 2;
       const total = appConfig.targets.length;
     
-      // Intercept navigation keys
-      const navKeys = ['ArrowRight', 'ArrowLeft', 'ArrowDown', 'ArrowUp', 'Enter'];
-      if (navKeys.includes(e.key) || e.keyCode === 13 || e.keyCode === 23) {
-        e.preventDefault(); 
-      }
-    
-      if (e.key === 'ArrowRight') {
+      if (isRight) {
         if (currentIndex === -2) currentIndex = -1; // Replay -> Config
         else if (currentIndex >= 0 && currentIndex + 1 < total) currentIndex++;
       } 
-      else if (e.key === 'ArrowLeft') {
+      else if (isLeft) {
         if (currentIndex === -1) currentIndex = -2; // Config -> Replay
         else if (currentIndex > 0) currentIndex--;
       } 
-      else if (e.key === 'ArrowDown') {
+      else if (isDown) {
         if (currentIndex < 0) currentIndex = 0; // Drop from top menu down to grid
         else if (currentIndex + cols < total) currentIndex += cols;
       } 
-      else if (e.key === 'ArrowUp') {
+      else if (isUp) {
         if (currentIndex >= 0 && currentIndex - cols >= 0) {
           currentIndex -= cols;
         } else if (currentIndex >= 0) {
-          currentIndex = -1; // Jump from top grid row to the Configure Menu button
+          // Smart routing: Left side of grid goes to Replay (-2), Right side goes to Config (-1)
+          currentIndex = (currentIndex % cols === 0) ? -2 : -1;
         }
       } 
-      else if (e.key === 'Enter' || e.keyCode === 13 || e.keyCode === 23) {
+      else if (isEnter) {
         if (currentIndex === -2) playStartupIntro();
         else if (currentIndex === -1) openConfigModal();
         else {
@@ -867,9 +881,10 @@
           if (target) triggerOfficialAttackVideo(target.name, target.pkg);
         }
       }
+      
       updateSelection();
     });
-
+    
     /******************************************************************
      * 6. ON-SCREEN CONFIGURATION MODAL
      ******************************************************************/

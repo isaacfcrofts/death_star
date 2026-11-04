@@ -14,7 +14,8 @@
       --bg: #000000;
       --cols: 2;
     }
-    * { box-sizing: border-box; margin: 0; padding: 0; user-select: none; }
+    * { box-sizing: border-box; margin: 0; padding: 0; user-select: none; outline: none !important; /* Hides the native TV highlight */
+      -webkit-tap-highlight-color: transparent; }
     body {
       background-color: var(--bg);
       color: var(--white);
@@ -805,7 +806,7 @@
     /******************************************************************
      * 5. TCL REMOTE D-PAD NAVIGATION & SHORTCUT KEYS
      ******************************************************************/
-    window.addEventListener('keydown', (e) => {
+   window.addEventListener('keydown', (e) => {
       if (e.key === 'c' || e.key === 'C' || e.keyCode === 82) {
         modalOpen ? closeConfigModal() : openConfigModal();
         return;
@@ -818,6 +819,12 @@
 
       const cols = parseInt(appConfig.columns) || 2;
       const total = appConfig.targets.length;
+
+      // Intercept navigation keys to stop the TV's native double-highlighting
+      const navKeys = ['ArrowRight', 'ArrowLeft', 'ArrowDown', 'ArrowUp', 'Enter'];
+      if (navKeys.includes(e.key) || e.keyCode === 13 || e.keyCode === 23) {
+        e.preventDefault(); 
+      }
 
       if (e.key === 'ArrowRight' && currentIndex + 1 < total) currentIndex++;
       else if (e.key === 'ArrowLeft' && currentIndex - 1 >= 0) currentIndex--;

@@ -300,9 +300,9 @@
 
   <div id="top-bar">
     <div style="display:flex; gap:10px;">
-      <button id="btn-replay" class="top-btn" tabindex="-1" onclick="playStartupIntro()">[ REPLAY INTRO ]</button>
+      <button id="btn-replay" class="top-btn" tabindex="-1" onclick="playSelectSound(); playStartupIntro()">[ REPLAY INTRO ]</button>
     </div>
-    <button id="btn-config" class="top-btn" tabindex="-1" onclick="openConfigModal()">[ CONFIGURE MENU ]</button>
+    <button id="btn-config" class="top-btn" tabindex="-1" onclick="playSelectSound(); openConfigModal()">[ CONFIGURE MENU ]</button>
   </div>
 
   <div id="main-ui">
@@ -377,6 +377,50 @@
 
   <script>
     /******************************************************************
+     * 0. SOUND EFFECTS ENGINE
+     ******************************************************************/
+    const sfxMove = new Audio('menumove.mp3');
+    sfxMove.preload = 'auto';
+
+    const sfxSelect = new Audio('battlefront-2-menu.mp3');
+    sfxSelect.preload = 'auto';
+
+    const sfxLoading = new Audio('battlefront-loading.mp3');
+    sfxLoading.preload = 'auto';
+
+    let loadingLoopsRemaining = 0;
+
+    function playMoveSound() {
+      sfxMove.currentTime = 0;
+      sfxMove.play().catch(() => {});
+    }
+
+    function playSelectSound() {
+      sfxSelect.currentTime = 0;
+      sfxSelect.play().catch(() => {});
+    }
+
+    function startLoadingSound(maxRepeats = 3) {
+      stopLoadingSound();
+      loadingLoopsRemaining = maxRepeats - 1;
+      sfxLoading.onended = () => {
+        if (isLaunching && loadingLoopsRemaining > 0) {
+          loadingLoopsRemaining--;
+          sfxLoading.currentTime = 0;
+          sfxLoading.play().catch(() => {});
+        }
+      };
+      sfxLoading.play().catch(() => {});
+    }
+
+    function stopLoadingSound() {
+      loadingLoopsRemaining = 0;
+      sfxLoading.onended = null;
+      sfxLoading.pause();
+      sfxLoading.currentTime = 0;
+    }
+
+    /******************************************************************
      * 1. MENU & HOLOGRAM CONFIGURATION
      ******************************************************************/
     const DEFAULT_CONFIG = {
@@ -444,7 +488,7 @@
         const card = document.createElement('div');
         card.className = 'target-box' + (idx === currentIndex ? ' selected' : '') + (introDone ? ' pop-in' : '');
         
-        // Add this line to hide the div from the TV's native scanner
+        // Hide the div from the TV's native scanner
         card.tabIndex = -1; 
         
         card.innerHTML = `
@@ -455,6 +499,7 @@
           if (!introDone || isLaunching) return;
           currentIndex = idx;
           updateSelection();
+          playSelectSound();
           triggerOfficialAttackVideo(t.name, t.pkg);
         };
         grid.appendChild(card);
@@ -475,11 +520,6 @@
 
     /******************************************************************
      * 2. ACCURATE 3D DEATH STAR MODEL (MATCHED TO REFERENCE PHOTO)
-     *    - Circular glowing white points (not line segments)
-     *    - Flat equatorial line that stops outside the superlaser dish rim
-     *    - 16-spoke paired superlaser dish on the equator
-     *    - Dotted North Pole ring & solid South Pole ring with center dot
-     *    - Framed at camera.z = 16.5 so all 4 edges have full margin
      ******************************************************************/
     const scene = new THREE.Scene();
     const camera = new THREE.PerspectiveCamera(34, 1, 0.1, 1000);
@@ -488,7 +528,6 @@
     renderer.setPixelRatio(1);
     threeContainer.appendChild(renderer.domElement);
 
-    // Create crisp circular white dot texture for THREE.Points
     function createCircleDotTexture() {
       const c = document.createElement('canvas');
       c.width = 64; c.height = 64;
@@ -505,9 +544,9 @@
     }
 
     const dsGroup = new THREE.Group();
-    const R = 4.2; // Smaller radius + camera.z = 16.5 guarantees zero edge clipping
-    const dishAngularRadius = 0.37; // Superlaser dish cutout angle on equator
-    const dishNormal = new THREE.Vector3(0, 0, 1); // Dish centered at front (z = +R, y = 0)
+    const R = 4.2;
+    const dishAngularRadius = 0.37;
+    const dishNormal = new THREE.Vector3(0, 0, 1);
 
     const lineMat = new THREE.LineBasicMaterial({ color: 0xd8e8f0, linewidth: 2 });
     const dotMat = new THREE.PointsMaterial({
@@ -519,10 +558,8 @@
       depthWrite: false
     });
 
-    // A. Surface Point Cloud + Dotted North Pole Ring (as shown in reference image)
     const dotCoords = [];
 
-    // Dotted North Pole ring (14 dots around the top pole)
     const northR = R * 0.19;
     const northY = Math.sqrt(R * R - northR * northR);
     for (let i = 0; i < 14; i++) {
@@ -530,14 +567,12 @@
       dotCoords.push(Math.cos(a) * northR, northY, Math.sin(a) * northR);
     }
 
-    // Scattered latitude point cloud with clear gap along the equatorial trench
     const latBands = 22;
     for (let i = 2; i < latBands - 1; i++) {
       const phi = (i / latBands) * Math.PI;
       const y = R * Math.cos(phi);
       const ringR = R * Math.sin(phi);
 
-      // Leave a clean dark band above and below the equator line just like the photo
       if (Math.abs(y) < R * 0.11) continue;
 
       const count = Math.max(8, Math.floor(34 * Math.sin(phi)));
@@ -552,21 +587,18 @@
         const z = ringR * Math.sin(theta);
 
         const ptNorm = new THREE.Vector3(x, y, z).normalize();
-        // Exclude points inside the superlaser dish
         if (ptNorm.angleTo(dishNormal) > dishAngularRadius * 1.06) {
           dotCoords.push(x, y, z);
         }
       }
     }
 
-    // Single dot inside the South Pole ring (visible in reference photo)
     dotCoords.push(R * 0.04, -R * 0.992, R * 0.04);
 
     const dotGeo = new THREE.BufferGeometry();
     dotGeo.setAttribute('position', new THREE.Float32BufferAttribute(dotCoords, 3));
     dsGroup.add(new THREE.Points(dotGeo, dotMat));
 
-    // B. Solid South Pole Ring (reference photo shows solid small ellipse at bottom pole)
     const southPts = [];
     const southR = R * 0.14;
     const southY = -Math.sqrt(R * R - southR * southR);
@@ -576,17 +608,14 @@
     }
     dsGroup.add(new THREE.Line(new THREE.BufferGeometry().setFromPoints(southPts), lineMat));
 
-    // C. Equatorial Trench Line (stops at the outer rim of the superlaser dish, never crossing inside it)
     const eqPts = [];
     const eqSegs = 96;
     for (let i = 0; i <= eqSegs; i++) {
-      // Angle around Y axis starting from right rim of dish around the back to the left rim
       const a = dishAngularRadius + (i / eqSegs) * (Math.PI * 2 - dishAngularRadius * 2);
       eqPts.push(new THREE.Vector3(Math.sin(a) * R, 0, Math.cos(a) * R));
     }
     dsGroup.add(new THREE.Line(new THREE.BufferGeometry().setFromPoints(eqPts), lineMat));
 
-    // D. Equatorial Superlaser Dish (Outer Ring + Inner Ring + 8 Paired / 16 Radial Spokes)
     const dishGroup = new THREE.Group();
     const outerR = R * Math.sin(dishAngularRadius);
     const innerR = outerR * 0.44;
@@ -604,7 +633,6 @@
     dishGroup.add(makeDishCircle(outerR, rimZ));
     dishGroup.add(makeDishCircle(innerR, innerZ));
 
-    // 8 pairs of radial spokes (16 total) matching the grouped spoke pattern in the photo
     const spokePts = [];
     for (let p = 0; p < 8; p++) {
       const baseAngle = (p / 8) * Math.PI * 2;
@@ -622,11 +650,6 @@
 
     /******************************************************************
      * 3. STARTUP CHOREOGRAPHY & SEAMLESS OFFICIAL VIDEO LOOP
-     *    - Official Video Mode:
-     *        0.00s -> 5.85s: Stationary zoom-in dead center
-     *        5.85s -> 7.00s: Begins rotating in center
-     *        7.00s: Slides smoothly to the left while menu buttons pop up
-     *        5.85s <-> 18.05s: Seamless rotation loop while on menu
      ******************************************************************/
     let introTimers = [];
     let introStartMs = 0;
@@ -654,10 +677,10 @@
 
     function playStartupIntro() {
       clearIntroTimers();
+      stopLoadingSound();
       introDone = false;
       threeRotating = false;
 
-      // Reset stage to center and hide menu
       stageEl.classList.remove('docked-left');
       document.getElementById('menu-container').classList.remove('visible');
       document.getElementById('top-bar').classList.remove('visible');
@@ -672,13 +695,10 @@
         holoVideo.currentTime = 0;
         holoVideo.play().catch(() => {});
 
-        // At 7.0s in attack.mp4 (after stationary zoom completes at 5.85s and rotation starts),
-        // glide the video to the left and pop in the menu buttons
         introTimers.push(setTimeout(() => {
           revealMenuAndDockLeft();
         }, 7000));
       } else {
-        // 3D Model Choreography: Stationary zoom (0 -> 2.8s), rotate (2.8s), dock left (4.0s)
         dsGroup.rotation.set(0, 0, 0);
         dsGroup.scale.set(0.04, 0.04, 0.04);
         introStartMs = performance.now();
@@ -693,8 +713,6 @@
       }
     }
 
-    // Master Loop: Keeps official video seamlessly looping between 5.85s and 18.05s
-    // (where the Death Star rotates horizontally without tilting into the 0:19 trench zoom)
     function masterTick(now) {
       requestAnimationFrame(masterTick);
 
@@ -726,7 +744,6 @@
     playStartupIntro();
     requestAnimationFrame(masterTick);
 
-    // Replay startup intro whenever waking the TV or pressing Home to return
     document.addEventListener('visibilitychange', () => {
       if (document.visibilityState === 'visible' && !isLaunching) {
         playStartupIntro();
@@ -739,13 +756,13 @@
 
     /******************************************************************
      * 4. OFFICIAL ATTACK VIDEO SEQUENCE (02:51.8 -> 03:04.75)
-     *    Plays the exact trench-run, torpedo drop, shaft descent, and
-     *    8-ray reactor detonation from attack.mp4, freezes on the explosion
-     *    with the [APP NAME] box, and launches the app.
      ******************************************************************/
     function triggerOfficialAttackVideo(appName, pkgName) {
       isLaunching = true;
       holoVideo.pause();
+
+      // Start the repeating Battlefront loading sound during the torpedo run (up to 3 repeats)
+      startLoadingSound(3);
 
       const overlay = document.getElementById('attack-overlay');
       const label = document.getElementById('explosion-label');
@@ -757,6 +774,7 @@
       let holdTriggered = false;
 
       const finishAndLaunch = () => {
+        stopLoadingSound();
         attackVideo.pause();
         attackVideo.ontimeupdate = null;
         attackVideo.onended = null;
@@ -774,7 +792,6 @@
       };
 
       const startAttackClip = () => {
-        // Check if attack.mp4 is the full 3:10 video (>60s) or a pre-trimmed clip
         const isFullVideo = attackVideo.duration && attackVideo.duration > 60;
         const startSec  = isFullVideo ? 171.80 : 0;      // 02:51.80: Trench targeting display
         const labelSec  = isFullVideo ? 183.65 : Math.max(0, (attackVideo.duration || 13) - 1.2); // 03:03.65: Reactor explosion starburst
@@ -844,7 +861,6 @@
       // Intercept navigation keys to prevent the native TV highlight from fighting the script
       if (isUp || isDown || isLeft || isRight || isEnter) {
         e.preventDefault();
-        // Kill the native TV focus ring if the OS attempts to apply it
         if (document.activeElement) document.activeElement.blur(); 
       } else {
         return; // Ignore non-navigation keys
@@ -852,6 +868,7 @@
     
       const cols = parseInt(appConfig.columns) || 2;
       const total = appConfig.targets.length;
+      const prevIndex = currentIndex;
     
       if (isRight) {
         if (currentIndex === -2) currentIndex = -1; // Replay -> Config
@@ -874,15 +891,21 @@
         }
       } 
       else if (isEnter) {
+        playSelectSound();
         if (currentIndex === -2) playStartupIntro();
         else if (currentIndex === -1) openConfigModal();
         else {
           const target = appConfig.targets[currentIndex];
           if (target) triggerOfficialAttackVideo(target.name, target.pkg);
         }
+        return;
       }
-      
-      updateSelection();
+
+      // Play menu move sound whenever the arrow keys move focus to a new item
+      if (currentIndex !== prevIndex) {
+        playMoveSound();
+        updateSelection();
+      }
     });
     
     /******************************************************************

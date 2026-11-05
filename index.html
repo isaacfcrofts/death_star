@@ -203,30 +203,17 @@
       position: fixed;
       inset: 0;
       background: #000;
-      display: none;
+      display: flex; /* Always flex, just hidden */
+      opacity: 0; /* Hardware-accelerated hiding */
+      pointer-events: none; /* Prevents phantom clicks */
       align-items: center;
       justify-content: center;
       z-index: 100;
+      transition: opacity 0.15s ease;
     }
-    #attack-video {
-      width: 100vw;
-      height: 100vh;
-      object-fit: contain;
-      background: #000;
-    }
-    #explosion-label {
-      position: absolute;
-      border: 3px solid #ffffff;
-      background: #000000;
-      color: #ffffff;
-      padding: 14px 38px;
-      font-size: 2.5rem;
-      font-weight: bold;
-      letter-spacing: 5px;
-      display: none;
-      text-transform: uppercase;
-      box-shadow: 0 0 20px rgba(255, 255, 255, 0.6);
-      z-index: 110;
+    #attack-overlay.active {
+      opacity: 1;
+      pointer-events: auto;
     }
 
     /* On-Screen Customization Modal */
@@ -756,7 +743,7 @@
     /******************************************************************
      * 4. OFFICIAL ATTACK VIDEO SEQUENCE (02:51.8 -> 03:04.75)
      ******************************************************************/
-function triggerOfficialAttackVideo(appName, pkgName) {
+    function triggerOfficialAttackVideo(appName, pkgName) {
       isLaunching = true;
       holoVideo.pause();
 
@@ -764,17 +751,19 @@ function triggerOfficialAttackVideo(appName, pkgName) {
       startLoadingSound(3);
 
       const overlay = document.getElementById('attack-overlay');
-
-      overlay.style.display = 'flex';
+      
+      // Use CSS opacity class instead of display for smoother rendering
+      overlay.classList.add('active');
 
       let holdTriggered = false;
+      let rAF_ID; // Store requestAnimationFrame ID
 
       const finishAndLaunch = () => {
         stopLoadingSound();
+        cancelAnimationFrame(rAF_ID); // Stop the polling loop
         attackVideo.pause();
-        attackVideo.ontimeupdate = null;
         attackVideo.onended = null;
-        overlay.style.display = 'none';
+        overlay.classList.remove('active');
         isLaunching = false;
         if ((appConfig.hologramMode || 'official_video') === 'official_video') {
           holoVideo.play().catch(() => {});
@@ -793,11 +782,14 @@ function triggerOfficialAttackVideo(appName, pkgName) {
 
         attackVideo.currentTime = startSec;
 
-        attackVideo.ontimeupdate = () => {
+        // Use 60fps frame polling instead of laggy ontimeupdate
+        const checkTime = () => {
           if (!holdTriggered && attackVideo.currentTime >= freezeSec) {
             holdTriggered = true;
             attackVideo.pause();
             setTimeout(finishAndLaunch, 850);
+          } else {
+            rAF_ID = requestAnimationFrame(checkTime);
           }
         };
 
@@ -805,7 +797,9 @@ function triggerOfficialAttackVideo(appName, pkgName) {
           if (!holdTriggered) finishAndLaunch();
         };
 
-        attackVideo.play().catch(() => {
+        attackVideo.play().then(() => {
+          rAF_ID = requestAnimationFrame(checkTime);
+        }).catch(() => {
           setTimeout(finishAndLaunch, 1200);
         });
       };

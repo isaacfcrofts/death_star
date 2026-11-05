@@ -323,7 +323,6 @@
   <!-- Official Video Attack Sequence Overlay -->
   <div id="attack-overlay">
     <video id="attack-video" src="attack.mp4" preload="auto" playsinline></video>
-    <div id="explosion-label">DISNEY+</div>
   </div>
 
   <!-- On-Screen Customization Modal -->
@@ -757,7 +756,7 @@
     /******************************************************************
      * 4. OFFICIAL ATTACK VIDEO SEQUENCE (02:51.8 -> 03:04.75)
      ******************************************************************/
-    function triggerOfficialAttackVideo(appName, pkgName) {
+function triggerOfficialAttackVideo(appName, pkgName) {
       isLaunching = true;
       holoVideo.pause();
 
@@ -765,11 +764,8 @@
       startLoadingSound(3);
 
       const overlay = document.getElementById('attack-overlay');
-      const label = document.getElementById('explosion-label');
 
       overlay.style.display = 'flex';
-      label.innerText = appName;
-      label.style.display = 'none';
 
       let holdTriggered = false;
 
@@ -779,7 +775,6 @@
         attackVideo.ontimeupdate = null;
         attackVideo.onended = null;
         overlay.style.display = 'none';
-        label.style.display = 'none';
         isLaunching = false;
         if ((appConfig.hologramMode || 'official_video') === 'official_video') {
           holoVideo.play().catch(() => {});
@@ -793,20 +788,15 @@
 
       const startAttackClip = () => {
         const isFullVideo = attackVideo.duration && attackVideo.duration > 60;
-        const startSec  = isFullVideo ? 171.80 : 0;      // 02:51.80: Trench targeting display
-        const labelSec  = isFullVideo ? 183.65 : Math.max(0, (attackVideo.duration || 13) - 1.2); // 03:03.65: Reactor explosion starburst
-        const freezeSec = isFullVideo ? 184.75 : Math.max(0, (attackVideo.duration || 13) - 0.15); // 03:04.75: Hold before 03:05 cut
+        const startSec  = isFullVideo ? 171.80 : 0;      
+        const freezeSec = isFullVideo ? 184.75 : Math.max(0, (attackVideo.duration || 13) - 0.15); 
 
         attackVideo.currentTime = startSec;
 
         attackVideo.ontimeupdate = () => {
-          if (attackVideo.currentTime >= labelSec) {
-            label.style.display = 'block';
-          }
           if (!holdTriggered && attackVideo.currentTime >= freezeSec) {
             holdTriggered = true;
             attackVideo.pause();
-            label.style.display = 'block';
             setTimeout(finishAndLaunch, 850);
           }
         };
@@ -816,7 +806,6 @@
         };
 
         attackVideo.play().catch(() => {
-          label.style.display = 'block';
           setTimeout(finishAndLaunch, 1200);
         });
       };
@@ -826,7 +815,6 @@
       } else {
         attackVideo.onloadedmetadata = startAttackClip;
         attackVideo.onerror = () => {
-          label.style.display = 'block';
           setTimeout(finishAndLaunch, 1200);
         };
       }
